@@ -1,506 +1,550 @@
-import React, { useState, useEffect } from 'react';
-import { Button, Input, Typography, Table, Tag, Spin, Card, Collapse, Toast, Space, Tabs } from '@douyinfe/semi-ui';
-import { IconSearch, IconCopy, IconDownload } from '@douyinfe/semi-icons';
-import { API, timestamp2string } from '../helpers';
-import { stringToColor } from '../helpers/render';
-import { ITEMS_PER_PAGE } from '../constants';
-import { renderModelPrice, renderQuota } from '../helpers/render';
-import Paragraph from '@douyinfe/semi-ui/lib/es/typography/paragraph';
-import { Tooltip, Modal } from '@douyinfe/semi-ui';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Button,
+  Card,
+  Collapse,
+  Input,
+  Modal,
+  Space,
+  Spin,
+  Table,
+  Tabs,
+  Tag,
+  Toast,
+  Tooltip,
+  Typography,
+} from '@douyinfe/semi-ui';
+import { IconCopy, IconDownload, IconSearch } from '@douyinfe/semi-icons';
 import Papa from 'papaparse';
+
+import { API, timestamp2string } from '../helpers';
+import { ITEMS_PER_PAGE } from '../constants';
+import { renderModelPrice, renderQuota, stringToColor } from '../helpers/render';
 
 const { Text } = Typography;
 const { Panel } = Collapse;
 const { TabPane } = Tabs;
 
 function renderTimestamp(timestamp) {
-    return timestamp2string(timestamp);
+  return timestamp2string(timestamp);
 }
 
 function renderIsStream(bool) {
-    if (bool) {
-        return <Tag color="blue" size="large">流</Tag>;
-    } else {
-        return <Tag color="purple" size="large">非流</Tag>;
-    }
+  return bool ? '流' : '非流';
 }
 
 function renderUseTime(type) {
-    const time = parseInt(type);
-    if (time < 101) {
-        return <Tag color="green" size="large"> {time} 秒 </Tag>;
-    } else if (time < 300) {
-        return <Tag color="orange" size="large"> {time} 秒 </Tag>;
-    } else {
-        return <Tag color="red" size="large"> {time} 秒 </Tag>;
-    }
+  const time = Number.parseInt(type, 10);
+  if (Number.isNaN(time)) return '-';
+  return `${time} 秒`;
 }
 
 const LogsTable = () => {
-    const [apikey, setAPIKey] = useState('');
-    const [activeTabKey, setActiveTabKey] = useState('');
-    const [tabData, setTabData] = useState({});
-    const [loading, setLoading] = useState(false);
-    const [activeKeys, setActiveKeys] = useState([]);
-    const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
-    const [baseUrl, setBaseUrl] = useState('');
-    const baseUrls = JSON.parse(process.env.REACT_APP_BASE_URL);  // 解析环境变量
+  const [apikey, setAPIKey] = useState('');
+  const [activeTabKey, setActiveTabKey] = useState('');
+  const [tabData, setTabData] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [activeKeys, setActiveKeys] = useState([]);
+  const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
+  const [baseUrl, setBaseUrl] = useState('');
 
-    useEffect(() => {
-        // 默认设置第一个地址为baseUrl
-        const firstKey = Object.keys(baseUrls)[0];
-        setActiveTabKey(firstKey);
-        setBaseUrl(baseUrls[firstKey]);
-    }, []);
+  // 解析环境变量（支持多个站点：{"server1":"https://xxx","server2":"https://yyy"}）
+  const baseUrls = useMemo(() => {
+    try {
+      const parsed = JSON.parse(process.env.REACT_APP_BASE_URL || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }, []);
 
-    const handleTabChange = (key) => {
-        setActiveTabKey(key);
-        setBaseUrl(baseUrls[key]);
+  useEffect(() => {
+    const keys = Object.keys(baseUrls);
+    if (keys.length > 0) {
+      const firstKey = keys[0];
+      setActiveTabKey(firstKey);
+      setBaseUrl(baseUrls[firstKey]);
+    }
+  }, [baseUrls]);
+
+  const handleTabChange = (key) => {
+    setActiveTabKey(key);
+    setBaseUrl(baseUrls[key]);
+  };
+
+  const resetData = (key) => {
+    setTabData((prev) => ({
+      ...prev,
+      [key]: {
+        totalGranted: 0,
+        totalUsed: 0,
+        totalAvailable: 0,
+        unlimitedQuota: false,
+        expiresAt: 0,
+        tokenName: '',
+        logs: [],
+        tokenValid: false,
+      },
+    }));
+  };
+
+  const copyText = async (text) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        Toast.success(`已复制：${text}`);
+        return;
+      }
+
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        document.execCommand('copy');
+        textArea.remove();
+        Toast.success(`已复制：${text}`);
+      } catch (err) {
+        textArea.remove();
+        Modal.error({ title: '无法复制到剪贴板，请手动复制', content: text });
+      }
+    } catch (err) {
+      Modal.error({ title: '无法复制到剪贴板，请手动复制', content: text });
+    }
+  };
+
+  const fetchData = async () => {
+    if (!baseUrl) {
+      Toast.error('Base URL 未配置或解析失败，请检查 REACT_APP_BASE_URL');
+      return;
+    }
+
+    if (!apikey) {
+      Toast.warning('请先输入令牌，再进行查询');
+      return;
+    }
+
+    // 检查令牌格式（与原逻辑一致）
+    if (!/^sk-[a-zA-Z0-9]{48}$/.test(apikey)) {
+      Toast.error('令牌格式非法！');
+      return;
+    }
+
+    setLoading(true);
+
+    const prevTab = tabData[activeTabKey] || {};
+    const newTabData = {
+      ...prevTab,
+      totalGranted: 0,
+      totalUsed: 0,
+      totalAvailable: 0,
+      unlimitedQuota: false,
+      expiresAt: 0,
+      tokenName: '',
+      logs: [],
+      tokenValid: false,
     };
 
-    const resetData = (key) => {
-        setTabData((prevData) => ({
-            ...prevData,
-            [key]: {
-                totalGranted: 0,
-                totalUsed: 0,
-                totalAvailable: 0,
-                unlimitedQuota: false,
-                expiresAt: 0,
-                tokenName: '',
-                logs: [],
-                tokenValid: false,
-            }
-        }));
-    };
+    // 余额信息
+    try {
+      if (process.env.REACT_APP_SHOW_BALANCE === 'true') {
+        const usageRes = await API.get(`${baseUrl}/api/usage/token/`, {
+          headers: { Authorization: `Bearer ${apikey}` },
+        });
 
-    const fetchData = async () => {
-        if (apikey === '') {
-            Toast.warning('请先输入令牌，再进行查询');
-            return;
+        const usageData = usageRes.data;
+        if (usageData && usageData.code) {
+          const d = usageData.data;
+          newTabData.unlimitedQuota = d.unlimited_quota;
+          newTabData.totalGranted = d.total_granted;
+          newTabData.totalUsed = d.total_used;
+          newTabData.totalAvailable = d.total_available;
+          newTabData.expiresAt = d.expires_at;
+          newTabData.tokenName = d.name;
+          newTabData.tokenValid = true;
+        } else {
+          Toast.error((usageData && usageData.message) || '查询令牌信息失败');
         }
-        // 检查令牌格式
-        if (!/^sk-[a-zA-Z0-9]{48}$/.test(apikey)) {
-            Toast.error('令牌格式非法！');
-            return;
+      }
+    } catch (e) {
+      // 这里不要提前 return，让后续逻辑保持一致
+      Toast.error('查询令牌信息失败，请检查令牌是否正确');
+      resetData(activeTabKey);
+      setLoading(false);
+      return;
+    }
+
+    // 调用详情
+    try {
+      if (process.env.REACT_APP_SHOW_DETAIL === 'true') {
+        const logRes = await API.get(`${baseUrl}/api/log/token`, {
+          headers: { Authorization: `Bearer ${apikey}` },
+        });
+
+        const { success, data: logData } = logRes.data || {};
+        if (success) {
+          const logs = Array.isArray(logData) ? logData.slice().reverse() : [];
+          newTabData.logs = logs;
+          setActiveKeys(['1', '2']); // 自动展开两个折叠面板
+        } else {
+          Toast.error('查询调用详情失败，请输入正确的令牌');
         }
-        setLoading(true);
-        let newTabData = { ...tabData[activeTabKey], totalGranted: 0, totalUsed: 0, totalAvailable: 0, unlimitedQuota: false, expiresAt: 0, tokenName: '', logs: [], tokenValid: false };
+      }
+    } catch (e) {
+      Toast.error('查询失败，请输入正确的令牌');
+      resetData(activeTabKey);
+      setLoading(false);
+      return;
+    }
 
-        try {
+    setTabData((prev) => ({ ...prev, [activeTabKey]: newTabData }));
+    setLoading(false);
+  };
 
-            if (process.env.REACT_APP_SHOW_BALANCE === "true") {
-                const usageRes = await API.get(`${baseUrl}/api/usage/token/`, {
-                    headers: { Authorization: `Bearer ${apikey}` },
-                });
-                const usageData = usageRes.data;
-                if (usageData.code) {
-                    const d = usageData.data;
-                    newTabData.unlimitedQuota = d.unlimited_quota;
-                    newTabData.totalGranted = d.total_granted;
-                    newTabData.totalUsed = d.total_used;
-                    newTabData.totalAvailable = d.total_available;
-                    newTabData.expiresAt = d.expires_at;
-                    newTabData.tokenName = d.name;
-                    newTabData.tokenValid = true;
-                } else {
-                    Toast.error(usageData.message || '查询令牌信息失败');
-                }
-            }
-        } catch (e) {
-            console.log(e)
-            Toast.error("查询令牌信息失败，请检查令牌是否正确");
-            resetData(activeTabKey); // 如果发生错误，重置所有数据为默认值
-            setLoading(false);
-        }
-        try {
-            if (process.env.REACT_APP_SHOW_DETAIL === "true") {
-                const logRes = await API.get(`${baseUrl}/api/log/token`, {
-                    headers: { Authorization: `Bearer ${apikey}` },
-                });
-                const { success, message, data: logData } = logRes.data;
-                if (success) {
-                    newTabData.logs = logData.reverse();
-                    let quota = 0;
-                    for (let i = 0; i < logData.length; i++) {
-                        quota += logData[i].quota;
-                    }
-                    setActiveKeys(['1', '2']); // 自动展开两个折叠面板
-                } else {
-                    Toast.error('查询调用详情失败，请输入正确的令牌');
-                }
-            }
-        } catch (e) {
-            Toast.error("查询失败，请输入正确的令牌");
-            resetData(activeTabKey); // 如果发生错误，重置所有数据为默认值
-            setLoading(false);
-        }
-        setTabData((prevData) => ({
-            ...prevData,
-            [activeTabKey]: newTabData,
-        }));
-        setLoading(false);
+  const copyTokenInfo = (e) => {
+    e.stopPropagation();
+    const active = tabData[activeTabKey] || {};
+    const {
+      totalGranted,
+      totalUsed,
+      totalAvailable,
+      unlimitedQuota,
+      expiresAt,
+      tokenName,
+    } = active;
 
-    };
-
-    const copyText = async (text) => {
-        try {
-            // Try modern clipboard API first
-            if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(text);
-                Toast.success('已复制：' + text);
-                return;
-            }
-            
-            // Fallback for Safari and older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            
-            try {
-                document.execCommand('copy');
-                textArea.remove();
-                Toast.success('已复制：' + text);
-            } catch (err) {
-                textArea.remove();
-                Modal.error({ title: '无法复制到剪贴板，请手动复制', content: text });
-            }
-        } catch (err) {
-            Modal.error({ title: '无法复制到剪贴板，请手动复制', content: text });
-        }
-    };
-
-    const columns = [
-        {
-            title: '时间',
-            dataIndex: 'created_at',
-            render: renderTimestamp,
-            sorter: (a, b) => a.created_at - b.created_at,
-        },
-        {
-            title: '令牌名称',
-            dataIndex: 'token_name',
-            render: (text, record, index) => {
-                return record.type === 0 || record.type === 2 ? (
-                    <div>
-                        <Tag
-                            color="grey"
-                            size="large"
-                            onClick={() => {
-                                copyText(text);
-                            }}
-                        >
-                            {' '}
-                            {text}{' '}
-                        </Tag>
-                    </div>
-                ) : (
-                    <></>
-                );
-            },
-            sorter: (a, b) => ('' + a.token_name).localeCompare(b.token_name),
-        },
-        {
-            title: '模型',
-            dataIndex: 'model_name',
-            render: (text, record, index) => {
-                return record.type === 0 || record.type === 2 ? (
-                    <div>
-                        <Tag
-                            color={stringToColor(text)}
-                            size="large"
-                            onClick={() => {
-                                copyText(text);
-                            }}
-                        >
-                            {' '}
-                            {text}{' '}
-                        </Tag>
-                    </div>
-                ) : (
-                    <></>
-                );
-            },
-            sorter: (a, b) => ('' + a.model_name).localeCompare(b.model_name),
-        },
-        {
-            title: '用时',
-            dataIndex: 'use_time',
-            render: (text, record, index) => {
-                return record.model_name.startsWith('mj_') ? null : (
-                    <div>
-                        <Space>
-                            {renderUseTime(text)}
-                            {renderIsStream(record.is_stream)}
-                        </Space>
-                    </div>
-                );
-            },
-            sorter: (a, b) => a.use_time - b.use_time,
-        },
-        {
-            title: '提示',
-            dataIndex: 'prompt_tokens',
-            render: (text, record, index) => {
-                return record.model_name.startsWith('mj_') ? null : (
-                    record.type === 0 || record.type === 2 ? <div>{<span> {text} </span>}</div> : <></>
-                );
-            },
-            sorter: (a, b) => a.prompt_tokens - b.prompt_tokens,
-        },
-        {
-            title: '补全',
-            dataIndex: 'completion_tokens',
-            render: (text, record, index) => {
-                return parseInt(text) > 0 && (record.type === 0 || record.type === 2) ? (
-                    <div>{<span> {text} </span>}</div>
-                ) : (
-                    <></>
-                );
-            },
-            sorter: (a, b) => a.completion_tokens - b.completion_tokens,
-        },
-        {
-            title: '花费',
-            dataIndex: 'quota',
-            render: (text, record, index) => {
-                return record.type === 0 || record.type === 2 ? <div>{renderQuota(text, 6)}</div> : <></>;
-            },
-            sorter: (a, b) => a.quota - b.quota,
-        },
-        {
-            title: '详情',
-            dataIndex: 'content',
-            render: (text, record, index) => {
-                let other = null;
-                try {
-                    if (record.other === '') {
-                        record.other = '{}';
-                    }
-                    other = JSON.parse(record.other);
-                } catch (e) {
-                    return (
-                        <Tooltip content="该版本不支持显示计算详情">
-                            <Paragraph
-                                ellipsis={{
-                                    rows: 2,
-                                }}
-                            >
-                                {text}
-                            </Paragraph>
-                        </Tooltip>
-                    );
-                }
-                if (other == null) {
-                    return (
-                        <Paragraph
-                            ellipsis={{
-                                rows: 2,
-                                showTooltip: {
-                                    type: 'popover',
-                                },
-                            }}
-                        >
-                            {text}
-                        </Paragraph>
-                    );
-                }
-                let content = renderModelPrice(
-                    record.prompt_tokens,
-                    record.completion_tokens,
-                    other.model_ratio,
-                    other.model_price,
-                    other.completion_ratio,
-                    other.group_ratio,
-                );
-                return (
-                    <Tooltip content={content}>
-                        <Paragraph
-                            ellipsis={{
-                                rows: 2,
-                            }}
-                        >
-                            {text}
-                        </Paragraph>
-                    </Tooltip>
-                );
-            },
-        }
-    ];
-
-    const copyTokenInfo = (e) => {
-        e.stopPropagation();
-        const activeTabData = tabData[activeTabKey] || {};
-        const { totalGranted, totalUsed, totalAvailable, unlimitedQuota, expiresAt, tokenName } = activeTabData;
-        const info = `令牌名称: ${tokenName || '未知'}
+    const info = `令牌名称: ${tokenName || '未知'}
 令牌总额: ${unlimitedQuota ? '无限' : renderQuota(totalGranted, 3)}
 剩余额度: ${unlimitedQuota ? '无限制' : renderQuota(totalAvailable, 3)}
 已用额度: ${unlimitedQuota ? '不进行计算' : renderQuota(totalUsed, 3)}
 有效期至: ${expiresAt === 0 ? '永不过期' : renderTimestamp(expiresAt)}`;
-        copyText(info);
-    };
 
-    const exportCSV = (e) => {
-        e.stopPropagation();
-        const activeTabData = tabData[activeTabKey] || { logs: [] };
-        const { logs } = activeTabData;
-        const csvData = logs.map(log => ({
-            '时间': renderTimestamp(log.created_at),
-            '模型': log.model_name,
-            '用时': log.use_time,
-            '提示': log.prompt_tokens,
-            '补全': log.completion_tokens,
-            '花费': log.quota,
-            '详情': log.content,
-        }));
-        const csvString = '\ufeff' + Papa.unparse(csvData);
-        
-        try {
-            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'data.csv';
-            
-            // For Safari compatibility
-            if (navigator.userAgent.indexOf('Safari') > -1 && navigator.userAgent.indexOf('Chrome') === -1) {
-                link.target = '_blank';
-                link.setAttribute('target', '_blank');
-            }
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => URL.revokeObjectURL(url), 100);
-        } catch (err) {
-            Toast.error('导出失败，请稍后重试');
-            console.error('Export failed:', err);
+    copyText(info);
+  };
+
+  const exportCSV = (e) => {
+    e.stopPropagation();
+    const active = tabData[activeTabKey] || { logs: [] };
+    const { logs } = active;
+
+    const csvData = (logs || []).map((log) => ({
+      时间: renderTimestamp(log.created_at),
+      模型: log.model_name,
+      用时: log.use_time,
+      提示: log.prompt_tokens,
+      补全: log.completion_tokens,
+      花费: log.quota,
+      详情: log.content,
+    }));
+
+    const csvString = '\ufeff' + Papa.unparse(csvData);
+
+    try {
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'data.csv';
+
+      // Safari 兼容
+      if (
+        navigator.userAgent.includes('Safari') &&
+        !navigator.userAgent.includes('Chrome')
+      ) {
+        link.target = '_blank';
+        link.setAttribute('target', '_blank');
+      }
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (err) {
+      Toast.error('导出失败，请稍后重试');
+      // eslint-disable-next-line no-console
+      console.error('Export failed:', err);
+    }
+  };
+
+  const columns = [
+    {
+      title: '时间',
+      dataIndex: 'created_at',
+      render: renderTimestamp,
+      sorter: (a, b) => a.created_at - b.created_at,
+    },
+    {
+      title: '令牌名称',
+      dataIndex: 'token_name',
+      render: (text, record) => {
+        if (record.type === 0 || record.type === 2) {
+          return (
+            <Text
+              link
+              onClick={() => {
+                copyText(text);
+              }}
+            >
+              {text}
+            </Text>
+          );
         }
-    };
+        return <>{text}</>;
+      },
+      sorter: (a, b) => ('' + a.token_name).localeCompare(b.token_name),
+    },
+    {
+      title: '模型',
+      dataIndex: 'model_name',
+      render: (text, record) => {
+        if (record.type === 0 || record.type === 2) {
+          return (
+            <Tag color={stringToColor(text)} style={{ cursor: 'pointer' }}>
+              <span
+                onClick={() => {
+                  copyText(text);
+                }}
+              >
+                {text}
+              </span>
+            </Tag>
+          );
+        }
+        return <>{text}</>;
+      },
+      sorter: (a, b) => ('' + a.model_name).localeCompare(b.model_name),
+    },
+    {
+      title: '用时',
+      dataIndex: 'use_time',
+      render: (text, record) => {
+        if (record.model_name && record.model_name.startsWith('mj_')) return null;
+        return (
+          <>
+            {renderUseTime(text)} {renderIsStream(record.is_stream)}
+          </>
+        );
+      },
+      sorter: (a, b) => a.use_time - b.use_time,
+    },
+    {
+      title: '提示',
+      dataIndex: 'prompt_tokens',
+      render: (text, record) => {
+        if (record.model_name && record.model_name.startsWith('mj_')) return null;
+        if (record.type === 0 || record.type === 2) return <>{text}</>;
+        return null;
+      },
+      sorter: (a, b) => a.prompt_tokens - b.prompt_tokens,
+    },
+    {
+      title: '补全',
+      dataIndex: 'completion_tokens',
+      render: (text, record) => {
+        const n = Number.parseInt(text, 10);
+        if (!Number.isFinite(n) || n <= 0) return null;
+        if (record.type === 0 || record.type === 2) return <>{text}</>;
+        return null;
+      },
+      sorter: (a, b) => a.completion_tokens - b.completion_tokens,
+    },
+    {
+      title: '花费',
+      dataIndex: 'quota',
+      render: (text, record) => {
+        if (record.type === 0 || record.type === 2) return renderQuota(text, 6);
+        return null;
+      },
+      sorter: (a, b) => a.quota - b.quota,
+    },
+    {
+      title: '详情',
+      dataIndex: 'content',
+      render: (text, record) => {
+        let other;
+        try {
+          const raw = record.other === '' ? '{}' : record.other;
+          other = JSON.parse(raw);
+        } catch (e) {
+          return <Text>{text}</Text>;
+        }
 
-    const activeTabData = tabData[activeTabKey] || { logs: [], totalGranted: 0, totalUsed: 0, totalAvailable: 0, unlimitedQuota: false, expiresAt: 0, tokenName: '', tokenValid: false };
+        if (!other) return <Text>{text}</Text>;
 
-    const renderContent = () => (
-        <>
-            <Card style={{ marginTop: 24 }}>
-                <Input
-                    showClear
-                    value={apikey}
-                    onChange={(value) => setAPIKey(value)}
-                    placeholder="请输入要查询的令牌 sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    prefix={<IconSearch />}
-                    suffix={
-                        <Button
-                            type='primary'
-                            theme="solid"
-                            onClick={fetchData}
-                            loading={loading}
-                            disabled={apikey === ''}
-                        >
-                            查询
-                        </Button>
-                    }
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            fetchData();
-                        }
-                    }}
+        const priceInfo = renderModelPrice(
+          record.prompt_tokens,
+          record.completion_tokens,
+          other.model_ratio,
+          other.model_price,
+          other.completion_ratio,
+          other.group_ratio
+        );
+
+        return (
+          <Tooltip
+            content={
+              <div style={{ maxWidth: 520, whiteSpace: 'normal' }}>
+                {priceInfo}
+              </div>
+            }
+          >
+            <Text>{text}</Text>
+          </Tooltip>
+        );
+      },
+    },
+  ];
+
+  const activeTabData = tabData[activeTabKey] || {
+    logs: [],
+    totalGranted: 0,
+    totalUsed: 0,
+    totalAvailable: 0,
+    unlimitedQuota: false,
+    expiresAt: 0,
+    tokenName: '',
+    tokenValid: false,
+  };
+
+  const renderContent = () => (
+    <>
+      <Space style={{ width: '100%' }} vertical>
+        <Input
+          value={apikey}
+          onChange={(value) => setAPIKey(value)}
+          placeholder="请输入要查询的令牌 sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          prefix={<IconSearch />}
+          suffix={
+            <Button
+              type="primary"
+              onClick={fetchData}
+              icon={<IconSearch />}
+              theme="solid"
+            >
+              查询
+            </Button>
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') fetchData();
+          }}
+        />
+
+        <Collapse activeKey={activeKeys} onChange={(keys) => setActiveKeys(keys)}>
+          {process.env.REACT_APP_SHOW_BALANCE === 'true' && (
+            <Panel header="令牌信息" itemKey="1">
+              <Card>
+                <Space vertical align="start">
+                  <Button
+                    theme="borderless"
+                    type="primary"
+                    onClick={copyTokenInfo}
+                    disabled={!activeTabData.tokenValid}
+                    icon={<IconCopy />}
+                  >
+                    复制令牌信息
+                  </Button>
+
+                  <div>令牌名称：{activeTabData.tokenName || '未知'}</div>
+                  <div>
+                    令牌总额：
+                    {activeTabData.unlimitedQuota
+                      ? '无限'
+                      : !activeTabData.tokenValid
+                      ? '未知'
+                      : renderQuota(activeTabData.totalGranted, 3)}
+                  </div>
+                  <div>
+                    剩余额度：
+                    {activeTabData.unlimitedQuota
+                      ? '无限制'
+                      : !activeTabData.tokenValid
+                      ? '未知'
+                      : renderQuota(activeTabData.totalAvailable, 3)}
+                  </div>
+                  <div>
+                    已用额度：
+                    {activeTabData.unlimitedQuota
+                      ? '不进行计算'
+                      : !activeTabData.tokenValid
+                      ? '未知'
+                      : renderQuota(activeTabData.totalUsed, 3)}
+                  </div>
+                  <div>
+                    有效期至：
+                    {activeTabData.expiresAt === 0
+                      ? '永不过期'
+                      : !activeTabData.tokenValid
+                      ? '未知'
+                      : renderTimestamp(activeTabData.expiresAt)}
+                  </div>
+                </Space>
+              </Card>
+            </Panel>
+          )}
+
+          {process.env.REACT_APP_SHOW_DETAIL === 'true' && (
+            <Panel header="调用详情" itemKey="2">
+              <Space vertical style={{ width: '100%' }}>
+                <Button
+                  theme="borderless"
+                  type="primary"
+                  onClick={exportCSV}
+                  disabled={
+                    !activeTabData.tokenValid || activeTabData.logs.length === 0
+                  }
+                  icon={<IconDownload />}
+                >
+                  导出为CSV文件
+                </Button>
+
+                <Table
+                  columns={columns}
+                  dataSource={activeTabData.logs}
+                  pagination={{
+                    pageSize,
+                    onPageSizeChange: (ps) => setPageSize(ps),
+                    showTotal: (total) => `共 ${total} 条`,
+                    showQuickJumper: true,
+                    total: activeTabData.logs.length,
+                    style: { marginTop: 12 },
+                  }}
                 />
-            </Card>
-            <Card style={{ marginTop: 24 }}>
-                <Collapse activeKey={activeKeys} onChange={(keys) => setActiveKeys(keys)}>
-                    {process.env.REACT_APP_SHOW_BALANCE === "true" && (
-                        <Panel
-                            header="令牌信息"
-                            itemKey="1"
-                            extra={
-                                <Button icon={<IconCopy />} theme='borderless' type='primary' onClick={(e) => copyTokenInfo(e)} disabled={!activeTabData.tokenValid}>
-                                    复制令牌信息
-                                </Button>
-                            }
-                        >
-                            <Spin spinning={loading}>
-                                <div style={{ marginBottom: 16 }}>
-                                    <Text type="secondary">
-                                        令牌名称：{activeTabData.tokenName || '未知'}
-                                    </Text>
-                                    <br /><br />
-                                    <Text type="secondary">
-                                        令牌总额：{activeTabData.unlimitedQuota ? "无限" : !activeTabData.tokenValid ? "未知" : renderQuota(activeTabData.totalGranted, 3)}
-                                    </Text>
-                                    <br /><br />
-                                    <Text type="secondary">
-                                        剩余额度：{activeTabData.unlimitedQuota ? "无限制" : !activeTabData.tokenValid ? "未知" : renderQuota(activeTabData.totalAvailable, 3)}
-                                    </Text>
-                                    <br /><br />
-                                    <Text type="secondary">
-                                        已用额度：{activeTabData.unlimitedQuota ? "不进行计算" : !activeTabData.tokenValid ? "未知" : renderQuota(activeTabData.totalUsed, 3)}
-                                    </Text>
-                                    <br /><br />
-                                    <Text type="secondary">
-                                        有效期至：{activeTabData.expiresAt === 0 ? '永不过期' : !activeTabData.tokenValid ? '未知' : renderTimestamp(activeTabData.expiresAt)}
-                                    </Text>
-                                </div>
-                            </Spin>
-                        </Panel>
-                    )}
-                    {process.env.REACT_APP_SHOW_DETAIL === "true" && (
-                        <Panel
-                            header="调用详情"
-                            itemKey="2"
-                            extra={
-                                <div style={{ display: 'flex', alignItems: 'center' }}>
-                                    <Tag shape='circle' color='green' style={{ marginRight: 5 }}>计算汇率：$1 = 50 0000 tokens</Tag>
-                                    <Button icon={<IconDownload />} theme='borderless' type='primary' onClick={(e) => exportCSV(e)} disabled={!activeTabData.tokenValid || activeTabData.logs.length === 0}>
-                                        导出为CSV文件
-                                    </Button>
-                                </div>
-                            }
-                        >
-                            <Spin spinning={loading}>
-                                <Table
-                                    columns={columns}
-                                    dataSource={activeTabData.logs}
-                                    pagination={{
-                                        pageSize: pageSize,
-                                        hideOnSinglePage: true,
-                                        showSizeChanger: true,
-                                        pageSizeOpts: [10, 20, 50, 100],
-                                        onPageSizeChange: (pageSize) => setPageSize(pageSize),
-                                        showTotal: (total) => `共 ${total} 条`,
-                                        showQuickJumper: true,
-                                        total: activeTabData.logs.length,
-                                        style: { marginTop: 12 },
-                                    }}
-                                />
-                            </Spin>
-                        </Panel>
-                    )}
-                </Collapse>
-            </Card>
-        </>
-    );
+              </Space>
+            </Panel>
+          )}
+        </Collapse>
+      </Space>
+    </>
+  );
 
-    return (
-        <>
-            {Object.keys(baseUrls).length > 1 ? (
-                <Tabs type="line" onChange={handleTabChange}>
-                    {Object.entries(baseUrls).map(([key, url]) => (
-                        <TabPane tab={key} itemKey={key} key={key}>
-                            {renderContent()}
-                        </TabPane>
-                    ))}
-                </Tabs>
-            ) : (
-                renderContent()
-            )}
-        </>
-    );
+  const keys = Object.keys(baseUrls);
+
+  return (
+    <Spin spinning={loading}>
+      {keys.length > 1 ? (
+        <Tabs
+          type="line"
+          activeKey={activeTabKey}
+          onChange={handleTabChange}
+        >
+          {Object.entries(baseUrls).map(([key]) => (
+            <TabPane tab={key} itemKey={key} key={key}>
+              {renderContent()}
+            </TabPane>
+          ))}
+        </Tabs>
+      ) : (
+        renderContent()
+      )}
+    </Spin>
+  );
 };
 
 export default LogsTable;
