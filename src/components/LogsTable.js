@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Input, Typography, Table, Tag, Spin, Card, Collapse, Toast, Space, Tabs } from '@douyinfe/semi-ui';
 import { IconSearch, IconCopy, IconDownload } from '@douyinfe/semi-icons';
-import { API, timestamp2string, copy } from '../helpers';
+import { API, timestamp2string } from '../helpers';
 import { stringToColor } from '../helpers/render';
 import { ITEMS_PER_PAGE } from '../constants';
 import { renderModelPrice, renderQuota } from '../helpers/render';
