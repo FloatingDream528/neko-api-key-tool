@@ -48,7 +48,7 @@ const LogsTable = () => {
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [baseUrl, setBaseUrl] = useState('');
 
-  // 解析环境变量（支持多个站点：{"server1":"https://xxx","server2":"https://yyy"}）
+  // ✅ 让 baseUrls 引用稳定，并且避免 JSON.parse 崩溃
   const baseUrls = useMemo(() => {
     try {
       const parsed = JSON.parse(process.env.REACT_APP_BASE_URL || '{}');
@@ -58,6 +58,7 @@ const LogsTable = () => {
     }
   }, []);
 
+  // ✅ 修复 exhaustive-deps：把 baseUrls 放进依赖
   useEffect(() => {
     const keys = Object.keys(baseUrls);
     if (keys.length > 0) {
@@ -124,12 +125,11 @@ const LogsTable = () => {
       return;
     }
 
-    if (!apikey) {
+    if (apikey === '') {
       Toast.warning('请先输入令牌，再进行查询');
       return;
     }
 
-    // 检查令牌格式（与原逻辑一致）
     if (!/^sk-[a-zA-Z0-9]{48}$/.test(apikey)) {
       Toast.error('令牌格式非法！');
       return;
@@ -137,9 +137,9 @@ const LogsTable = () => {
 
     setLoading(true);
 
-    const prevTab = tabData[activeTabKey] || {};
+    const prev = tabData[activeTabKey] || {};
     const newTabData = {
-      ...prevTab,
+      ...prev,
       totalGranted: 0,
       totalUsed: 0,
       totalAvailable: 0,
@@ -172,7 +172,6 @@ const LogsTable = () => {
         }
       }
     } catch (e) {
-      // 这里不要提前 return，让后续逻辑保持一致
       Toast.error('查询令牌信息失败，请检查令牌是否正确');
       resetData(activeTabKey);
       setLoading(false);
@@ -186,11 +185,14 @@ const LogsTable = () => {
           headers: { Authorization: `Bearer ${apikey}` },
         });
 
+        // ✅ 去掉未使用的 message（eslint no-unused-vars）
         const { success, data: logData } = logRes.data || {};
         if (success) {
           const logs = Array.isArray(logData) ? logData.slice().reverse() : [];
           newTabData.logs = logs;
-          setActiveKeys(['1', '2']); // 自动展开两个折叠面板
+
+          // ✅ 去掉未使用的 quota（eslint no-unused-vars）
+          setActiveKeys(['1', '2']);
         } else {
           Toast.error('查询调用详情失败，请输入正确的令牌');
         }
@@ -202,7 +204,7 @@ const LogsTable = () => {
       return;
     }
 
-    setTabData((prev) => ({ ...prev, [activeTabKey]: newTabData }));
+    setTabData((prevData) => ({ ...prevData, [activeTabKey]: newTabData }));
     setLoading(false);
   };
 
@@ -252,7 +254,6 @@ const LogsTable = () => {
       link.href = url;
       link.download = 'data.csv';
 
-      // Safari 兼容
       if (
         navigator.userAgent.includes('Safari') &&
         !navigator.userAgent.includes('Chrome')
@@ -283,65 +284,49 @@ const LogsTable = () => {
     {
       title: '令牌名称',
       dataIndex: 'token_name',
-      render: (text, record) => {
-        if (record.type === 0 || record.type === 2) {
-          return (
-            <Text
-              link
-              onClick={() => {
-                copyText(text);
-              }}
-            >
-              {text}
-            </Text>
-          );
-        }
-        return <>{text}</>;
-      },
+      render: (text, record) =>
+        record.type === 0 || record.type === 2 ? (
+          <Text link onClick={() => copyText(text)}>
+            {text}
+          </Text>
+        ) : (
+          <>{text}</>
+        ),
       sorter: (a, b) => ('' + a.token_name).localeCompare(b.token_name),
     },
     {
       title: '模型',
       dataIndex: 'model_name',
-      render: (text, record) => {
-        if (record.type === 0 || record.type === 2) {
-          return (
-            <Tag color={stringToColor(text)} style={{ cursor: 'pointer' }}>
-              <span
-                onClick={() => {
-                  copyText(text);
-                }}
-              >
-                {text}
-              </span>
-            </Tag>
-          );
-        }
-        return <>{text}</>;
-      },
+      render: (text, record) =>
+        record.type === 0 || record.type === 2 ? (
+          <Tag color={stringToColor(text)} style={{ cursor: 'pointer' }}>
+            <span onClick={() => copyText(text)}>{text}</span>
+          </Tag>
+        ) : (
+          <>{text}</>
+        ),
       sorter: (a, b) => ('' + a.model_name).localeCompare(b.model_name),
     },
     {
       title: '用时',
       dataIndex: 'use_time',
-      render: (text, record) => {
-        if (record.model_name && record.model_name.startsWith('mj_')) return null;
-        return (
+      render: (text, record) =>
+        record.model_name && record.model_name.startsWith('mj_') ? null : (
           <>
             {renderUseTime(text)} {renderIsStream(record.is_stream)}
           </>
-        );
-      },
+        ),
       sorter: (a, b) => a.use_time - b.use_time,
     },
     {
       title: '提示',
       dataIndex: 'prompt_tokens',
-      render: (text, record) => {
-        if (record.model_name && record.model_name.startsWith('mj_')) return null;
-        if (record.type === 0 || record.type === 2) return <>{text}</>;
-        return null;
-      },
+      render: (text, record) =>
+        record.model_name && record.model_name.startsWith('mj_')
+          ? null
+          : record.type === 0 || record.type === 2
+          ? text
+          : null,
       sorter: (a, b) => a.prompt_tokens - b.prompt_tokens,
     },
     {
@@ -350,29 +335,26 @@ const LogsTable = () => {
       render: (text, record) => {
         const n = Number.parseInt(text, 10);
         if (!Number.isFinite(n) || n <= 0) return null;
-        if (record.type === 0 || record.type === 2) return <>{text}</>;
-        return null;
+        return record.type === 0 || record.type === 2 ? text : null;
       },
       sorter: (a, b) => a.completion_tokens - b.completion_tokens,
     },
     {
       title: '花费',
       dataIndex: 'quota',
-      render: (text, record) => {
-        if (record.type === 0 || record.type === 2) return renderQuota(text, 6);
-        return null;
-      },
+      render: (text, record) =>
+        record.type === 0 || record.type === 2 ? renderQuota(text, 6) : null,
       sorter: (a, b) => a.quota - b.quota,
     },
     {
       title: '详情',
       dataIndex: 'content',
       render: (text, record) => {
-        let other;
+        let other = null;
         try {
           const raw = record.other === '' ? '{}' : record.other;
           other = JSON.parse(raw);
-        } catch (e) {
+        } catch {
           return <Text>{text}</Text>;
         }
 
@@ -388,13 +370,7 @@ const LogsTable = () => {
         );
 
         return (
-          <Tooltip
-            content={
-              <div style={{ maxWidth: 520, whiteSpace: 'normal' }}>
-                {priceInfo}
-              </div>
-            }
-          >
+          <Tooltip content={<div style={{ maxWidth: 520 }}>{priceInfo}</div>}>
             <Text>{text}</Text>
           </Tooltip>
         );
@@ -496,9 +472,7 @@ const LogsTable = () => {
                   theme="borderless"
                   type="primary"
                   onClick={exportCSV}
-                  disabled={
-                    !activeTabData.tokenValid || activeTabData.logs.length === 0
-                  }
+                  disabled={!activeTabData.tokenValid || activeTabData.logs.length === 0}
                   icon={<IconDownload />}
                 >
                   导出为CSV文件
@@ -529,11 +503,7 @@ const LogsTable = () => {
   return (
     <Spin spinning={loading}>
       {keys.length > 1 ? (
-        <Tabs
-          type="line"
-          activeKey={activeTabKey}
-          onChange={handleTabChange}
-        >
+        <Tabs type="line" activeKey={activeTabKey} onChange={handleTabChange}>
           {Object.entries(baseUrls).map(([key]) => (
             <TabPane tab={key} itemKey={key} key={key}>
               {renderContent()}
