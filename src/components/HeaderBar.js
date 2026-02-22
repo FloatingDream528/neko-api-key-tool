@@ -1,4 +1,4 @@
-import { Nav, Typography } from '@douyinfe/semi-ui';
+import { Nav } from '@douyinfe/semi-ui';
 import { IconTag } from '@douyinfe/semi-icons-lab';
 import {
   IconGithubLogo,
