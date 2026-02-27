@@ -1,6 +1,16 @@
 services:
   neko-api-key-tool:
-    image: ghcr.io/floatingdream528/neko-api-key-tool:latest
+    build:
+      context: .
+      args:
+        - REACT_APP_BASE_URL=${REACT_APP_BASE_URL}
+        - REACT_APP_SHOW_BALANCE=${REACT_APP_SHOW_BALANCE}
+        - REACT_APP_SHOW_DETAIL=${REACT_APP_SHOW_DETAIL}
+        - REACT_APP_SHOW_ICONGITHUB=${REACT_APP_SHOW_ICONGITHUB}
+
+    # 从 .env 文件加载环境变量，供上面的 ${} 插值使用
+    env_file:
+      - .env
 
     container_name: neko-api-key-tool
     restart: always
