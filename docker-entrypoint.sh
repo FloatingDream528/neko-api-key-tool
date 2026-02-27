@@ -3,18 +3,18 @@
 
 ENV_JS="/usr/share/nginx/html/env-config.js"
 
-# 对值中的双引号和反斜杠进行转义，确保 JSON 字符串安全
+# 对值中的双引号和反斜杠进行转义，确保 JS 字符串安全
 escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
 cat > "$ENV_JS" <<ENDOFFILE
 window._env_ = {
-  REACT_APP_BASE_URL: "$(escape "${REACT_APP_BASE_URL}")",
-  REACT_APP_SERVER: "$(escape "${REACT_APP_SERVER}")",
-  REACT_APP_SHOW_BALANCE: "$(escape "${REACT_APP_SHOW_BALANCE:-true}")",
-  REACT_APP_SHOW_DETAIL: "$(escape "${REACT_APP_SHOW_DETAIL:-true}")",
-  REACT_APP_SHOW_ICONGITHUB: "$(escape "${REACT_APP_SHOW_ICONGITHUB:-true}")",
+  BASE_URL: "$(escape "${BASE_URL}")",
+  API_SERVER: "$(escape "${API_SERVER}")",
+  SHOW_BALANCE: "$(escape "${SHOW_BALANCE:-true}")",
+  SHOW_DETAIL: "$(escape "${SHOW_DETAIL:-true}")",
+  SHOW_GITHUB_ICON: "$(escape "${SHOW_GITHUB_ICON:-true}")",
 };
 ENDOFFILE
 

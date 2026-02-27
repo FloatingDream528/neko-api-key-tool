@@ -31,7 +31,7 @@ const HeaderBar = () => {
             />
           )}
 
-          {getEnv('REACT_APP_SHOW_ICONGITHUB') === 'true' && (
+          {getEnv('SHOW_GITHUB_ICON') === 'true' && (
             <Nav.Item
               icon={<IconGithubLogo />}
               text="GitHub"

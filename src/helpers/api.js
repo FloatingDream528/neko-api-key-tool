@@ -3,7 +3,7 @@ import { getEnv } from './env';
 import axios from 'axios';
 
 export const API = axios.create({
-  baseURL: getEnv('REACT_APP_SERVER') || '',
+  baseURL: getEnv('API_SERVER') || '',
 });
 
 API.interceptors.response.use(

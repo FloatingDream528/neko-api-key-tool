@@ -104,7 +104,7 @@ const LogsTable = () => {
   // ✅ 让 baseUrls 引用稳定，并且避免 JSON.parse 崩溃
   const baseUrls = useMemo(() => {
     try {
-      const parsed = JSON.parse(getEnv('REACT_APP_BASE_URL') || '{}');
+      const parsed = JSON.parse(getEnv('BASE_URL') || '{}');
       return parsed && typeof parsed === 'object' ? parsed : {};
     } catch {
       return {};
@@ -182,7 +182,7 @@ const LogsTable = () => {
 
   const fetchData = async () => {
     if (!baseUrl) {
-      Toast.error('Base URL 未配置或解析失败，请检查 REACT_APP_BASE_URL');
+      Toast.error('Base URL 未配置或解析失败，请检查 BASE_URL');
       return;
     }
 
@@ -213,7 +213,7 @@ const LogsTable = () => {
 
     // 余额信息
     try {
-      if (getEnv('REACT_APP_SHOW_BALANCE') === 'true') {
+      if (getEnv('SHOW_BALANCE') === 'true') {
         const usageRes = await API.get(`${baseUrl}/api/usage/token/`, {
           headers: { Authorization: `Bearer ${apikey}` },
         });
@@ -241,7 +241,7 @@ const LogsTable = () => {
 
     // 调用详情
     try {
-      if (getEnv('REACT_APP_SHOW_DETAIL') === 'true') {
+      if (getEnv('SHOW_DETAIL') === 'true') {
         const logRes = await API.get(`${baseUrl}/api/log/token`, {
           headers: { Authorization: `Bearer ${apikey}` },
         });
@@ -572,7 +572,7 @@ const LogsTable = () => {
 
       {(activeTabData.tokenValid || loading) && (
         <div className="result-container">
-          {getEnv('REACT_APP_SHOW_BALANCE') === 'true' && (
+          {getEnv('SHOW_BALANCE') === 'true' && (
             <div className="section-block">
               <div className="section-header">
                 <Typography.Title heading={4} style={{ margin: 0 }}>令牌信息</Typography.Title>
@@ -630,7 +630,7 @@ const LogsTable = () => {
             </div>
           )}
 
-          {getEnv('REACT_APP_SHOW_DETAIL') === 'true' && (
+          {getEnv('SHOW_DETAIL') === 'true' && (
             <div className="section-block" style={{ marginTop: '16px' }}>
               <div className="section-header">
                 <Typography.Title heading={4} style={{ margin: 0 }}>调用详情</Typography.Title>
