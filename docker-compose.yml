@@ -2,9 +2,9 @@ services:
   neko-api-key-tool:
     image: ghcr.io/floatingdream528/neko-api-key-tool:latest
 
-    # 从 .env 文件加载环境变量，容器启动时由入口脚本注入到前端
-    env_file:
-      - .env
+    # 将 .env 文件挂载到容器内，由入口脚本解析（避免 docker-compose 解析 JSON 值出错）
+    volumes:
+      - ./.env:/app/.env:ro
 
     container_name: neko-api-key-tool
     restart: always
