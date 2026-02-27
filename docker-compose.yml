@@ -1,0 +1,8 @@
+services:
+  neko-api-key-tool:
+    image: ghcr.io/floatingdream528/neko-api-key-tool:latest
+
+    container_name: neko-api-key-tool
+    restart: always
+    ports:
+      - "3456:80"
