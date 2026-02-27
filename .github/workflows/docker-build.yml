@@ -1,0 +1,99 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+
+env:
+  # ========== 镜像名称配置 ==========
+  # GitHub Container Registry (ghcr.io)
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  # Docker Hub (可选，需配置 DOCKERHUB_USERNAME 和 DOCKERHUB_TOKEN secrets)
+  DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/neko-api-key-tool
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # -------- 1. 检出代码 --------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -------- 2. 设置 Docker Buildx (支持多平台 & 缓存) --------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # -------- 3. 登录 GitHub Container Registry --------
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -------- 4. (可选) 登录 Docker Hub --------
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request' && secrets.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # -------- 5. 提取镜像标签 & 元数据 --------
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GHCR_IMAGE }}
+          tags: |
+            # 分支名 → latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Git 短 SHA
+            type=sha,prefix=,format=short
+            # 语义化版本标签 (v1.0.0 → 1.0.0)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      # -------- 6. 构建并推送镜像 --------
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # PR 时只构建不推送，合并后才推送
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 利用 GitHub Actions Cache 加速后续构建
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # 如需多平台支持，取消下行注释
+          # platforms: linux/amd64,linux/arm64
+
+      # -------- 7. 输出构建摘要 --------
+      - name: Image digest
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## 🐳 Docker Image Built Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.meta.outputs.digest || 'N/A' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.meta.outputs.tags }}' | tr ',' '\n' | while read tag; do
+            echo "- \`${tag}\`" >> $GITHUB_STEP_SUMMARY
+          done
