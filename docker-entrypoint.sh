@@ -3,22 +3,22 @@
 
 ENV_JS="/usr/share/nginx/html/env-config.js"
 
-# 对值中的双引号和反斜杠进行转义，确保 JS 字符串安全
-escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-}
+# 用 JS 模板直接拼接，避免 heredoc 中的引号转义问题
+{
+  echo 'window._env_ = {'
 
-cat > "$ENV_JS" <<ENDOFFILE
-window._env_ = {
-  BASE_URL: "$(escape "${BASE_URL}")",
-  API_SERVER: "$(escape "${API_SERVER}")",
-  SHOW_BALANCE: "$(escape "${SHOW_BALANCE:-true}")",
-  SHOW_DETAIL: "$(escape "${SHOW_DETAIL:-true}")",
-  SHOW_GITHUB_ICON: "$(escape "${SHOW_GITHUB_ICON:-true}")",
-};
-ENDOFFILE
+  # 逐个输出，用单引号包裹避免 JS 中双引号冲突
+  echo "  BASE_URL: '${BASE_URL}',"
+  echo "  API_SERVER: '${API_SERVER}',"
+  echo "  SHOW_BALANCE: '${SHOW_BALANCE:-true}',"
+  echo "  SHOW_DETAIL: '${SHOW_DETAIL:-true}',"
+  echo "  SHOW_GITHUB_ICON: '${SHOW_GITHUB_ICON:-true}',"
 
-echo "env-config.js generated:"
+  echo '};'
+} > "$ENV_JS"
+
+echo "=== env-config.js generated ==="
 cat "$ENV_JS"
+echo "==============================="
 
 exec nginx -g 'daemon off;'
