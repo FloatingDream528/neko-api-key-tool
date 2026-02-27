@@ -1,14 +1,8 @@
 services:
   neko-api-key-tool:
-    build:
-      context: .
-      args:
-        - REACT_APP_BASE_URL=${REACT_APP_BASE_URL}
-        - REACT_APP_SHOW_BALANCE=${REACT_APP_SHOW_BALANCE}
-        - REACT_APP_SHOW_DETAIL=${REACT_APP_SHOW_DETAIL}
-        - REACT_APP_SHOW_ICONGITHUB=${REACT_APP_SHOW_ICONGITHUB}
+    image: ghcr.io/floatingdream528/neko-api-key-tool:latest
 
-    # 从 .env 文件加载环境变量，供上面的 ${} 插值使用
+    # 从 .env 文件加载环境变量，容器启动时由入口脚本注入到前端
     env_file:
       - .env
 

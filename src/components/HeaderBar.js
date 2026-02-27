@@ -2,6 +2,7 @@ import { Nav } from '@douyinfe/semi-ui';
 import { IconTag } from '@douyinfe/semi-icons-lab';
 import { IconConnectionPoint1, IconGithubLogo, IconMoon, IconSun } from '@douyinfe/semi-icons';
 import { useSetTheme, useTheme } from '../context/Theme';
+import { getEnv } from '../helpers/env';
 
 const HeaderBar = () => {
   const theme = useTheme();
@@ -30,7 +31,7 @@ const HeaderBar = () => {
             />
           )}
 
-          {process.env.REACT_APP_SHOW_ICONGITHUB === 'true' && (
+          {getEnv('REACT_APP_SHOW_ICONGITHUB') === 'true' && (
             <Nav.Item
               icon={<IconGithubLogo />}
               text="GitHub"
