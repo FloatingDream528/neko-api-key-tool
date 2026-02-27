@@ -1,6 +1,6 @@
 import { Nav } from '@douyinfe/semi-ui';
 import { IconTag } from '@douyinfe/semi-icons-lab';
-import { IconGithubLogo, IconMoon, IconSun } from '@douyinfe/semi-icons';
+import { IconConnectionPoint1, IconGithubLogo, IconMoon, IconSun } from '@douyinfe/semi-icons';
 import { useSetTheme, useTheme } from '../context/Theme';
 
 const HeaderBar = () => {
@@ -11,8 +11,8 @@ const HeaderBar = () => {
     <Nav
       mode="horizontal"
       header={{
-        logo: <IconTag size="large" />,
-        text: 'Neko API Key Tool',
+        logo: <IconConnectionPoint1 size="large" style={{ color: 'var(--aurora-accent-cyan)' }} />,
+        text: 'Neko API 查询',
       }}
       footer={
         <>
@@ -36,7 +36,7 @@ const HeaderBar = () => {
               text="GitHub"
               onClick={() =>
                 window.open(
-                  'https://github.com/Calcium-Ion/neko-api-key-tool',
+                  'https://github.com/FloatingDream528/neko-api-key-tool',
                   '_blank'
                 )
               }

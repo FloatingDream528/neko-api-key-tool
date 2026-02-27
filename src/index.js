@@ -16,11 +16,13 @@ root.render(
   <React.StrictMode>
     <ThemeProvider>
       <Layout style={{ minHeight: '100vh' }}>
-        <Header style={{ padding: 0 }}>
+        <Header className="app-header">
           <HeaderBar />
         </Header>
-        <Content style={{ padding: 16 }}>
-          <App />
+        <Content className="app-content">
+          <div className="app-content-shell">
+            <App />
+          </div>
         </Content>
       </Layout>
     </ThemeProvider>
