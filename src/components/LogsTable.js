@@ -339,6 +339,7 @@ const LogsTable = () => {
       render: renderTimestamp,
       sorter: (a, b) => a.created_at - b.created_at,
       defaultSortOrder: 'descend',
+      ...(isMobile ? { width: 70 } : {}),
     },
     {
       title: '令牌名称',
@@ -365,6 +366,7 @@ const LogsTable = () => {
         );
       },
       sorter: (a, b) => ('' + a.token_name).localeCompare(b.token_name),
+      ...(isMobile ? { width: 80 } : {}),
     },
     {
       title: '模型',
@@ -388,6 +390,7 @@ const LogsTable = () => {
         );
       },
       sorter: (a, b) => ('' + a.model_name).localeCompare(b.model_name),
+      ...(isMobile ? { width: 90 } : {}),
     },
     {
       title: '用时',
@@ -430,6 +433,7 @@ const LogsTable = () => {
       render: (text, record) =>
         record.type === 0 || record.type === 2 ? renderQuota(text, 6) : null,
       sorter: (a, b) => a.quota - b.quota,
+      ...(isMobile ? { width: 55 } : {}),
     },
     {
       title: '详情摘要',
@@ -515,8 +519,8 @@ const LogsTable = () => {
       <Skeleton
         loading={loading}
         placeholder={
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '6px' : '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px' }}>
               <Skeleton.Avatar shape="square" size="small" />
               <Skeleton.Title style={{ width: '80px' }} />
             </div>
@@ -654,7 +658,7 @@ const LogsTable = () => {
                     dataSource={activeTabData.logs}
                     expandedRowRender={expandRowRender}
                     rowKey={(record, index) => (record?.id || index || 0).toString()}
-                    scroll={{ x: 900 }}
+                    scroll={isMobile ? undefined : { x: 900 }}
                     pagination={{
                       pageSize,
                       onPageSizeChange: (ps) => setPageSize(ps),

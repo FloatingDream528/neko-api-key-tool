@@ -391,6 +391,22 @@ body::before {
   border: 1px solid var(--aurora-border-card);
   border-left: 3px solid var(--aurora-accent-cyan);
   transition: background-color 0.3s ease, border-color 0.3s ease;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Constrain the expanded row cell to viewport width on mobile */
+.custom-table .semi-table-row-expanded > td {
+  max-width: 100vw;
+  overflow: hidden;
+}
+
+/* Ensure the expand cell content doesn't exceed viewport */
+.custom-table .semi-table-row-expanded > td > div {
+  max-width: calc(100vw - 40px);
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .log-expand-price {
@@ -628,13 +644,32 @@ body::before {
     display: none !important;
   }
 
+  /* Lock table layout so expanded rows don't deform columns */
+  .custom-table .semi-table table {
+    table-layout: fixed !important;
+    width: 100% !important;
+  }
+
+  /* Ensure the expanded row's colspan cell doesn't push column widths */
+  .custom-table .semi-table-row-expanded > td {
+    word-break: break-word;
+    overflow: hidden;
+  }
+
   .app-content {
     padding: 12px 10px;
   }
 
   .section-block {
-    padding: 14px 16px;
+    padding: 12px 14px;
     border-radius: 10px;
+  }
+
+  .section-header {
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    flex-wrap: wrap;
+    row-gap: 6px;
   }
 
   .compact-search-input {
@@ -644,26 +679,26 @@ body::before {
 
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 8px;
+  }
+
+  .stats-card .semi-card-body {
+    padding: 10px 14px !important;
   }
 
   .stats-card-value {
-    font-size: 18px !important;
+    font-size: 16px !important;
   }
 
   .stats-card-header {
-    margin-bottom: 8px;
+    margin-bottom: 4px;
   }
 
   .stats-icon-wrapper {
-    padding: 6px;
-    font-size: 16px;
-    margin-right: 8px;
-  }
-
-  .section-header {
-    flex-wrap: wrap;
-    row-gap: 8px;
+    padding: 5px;
+    font-size: 14px;
+    margin-right: 6px;
+    border-radius: 6px;
   }
 
   .detail-actions {
@@ -719,8 +754,35 @@ body::before {
 /* ── Small phones ≤ 480px ── */
 @media screen and (max-width: 480px) {
   .stats-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .stats-card .semi-card-body {
+    padding: 8px 10px !important;
+  }
+
+  .stats-card-value {
+    font-size: 14px !important;
+  }
+
+  .stats-card-header {
+    margin-bottom: 2px;
+  }
+
+  .stats-icon-wrapper {
+    padding: 4px;
+    font-size: 13px;
+    margin-right: 5px;
+  }
+
+  .section-block {
+    padding: 10px 12px;
+  }
+
+  .section-header {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
   }
 }
 
