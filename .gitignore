@@ -27,5 +27,9 @@ yarn-error.log*
 .claude/
 CLAUDE.md
 
+# playwright
+.playwright-mcp/
+*.png
+
 # logs
 server.log
