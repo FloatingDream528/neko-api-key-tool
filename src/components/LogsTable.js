@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Button,
   Card,
@@ -12,47 +12,16 @@ import {
   Skeleton,
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDownload, IconSearch, IconKey, IconCreditCard, IconBox, IconClock, IconTickCircle } from '@douyinfe/semi-icons';
-import Papa from 'papaparse';
 
 import { API, timestamp2string } from '../helpers';
 import { ITEMS_PER_PAGE } from '../constants';
 import { renderModelPrice, renderQuota, stringToColor } from '../helpers/render';
 import { getEnv } from '../helpers/env';
+import { useCountUp } from '../hooks/useCountUp';
+import { useMobileDetect } from '../hooks/useMobileDetect';
 
 const { Text } = Typography;
 const { TabPane } = Tabs;
-
-// Simple countUp hook for animated numbers
-function useCountUp(target, duration = 800) {
-  const [value, setValue] = useState(0);
-  const prevTarget = React.useRef(0);
-
-  useEffect(() => {
-    if (target === prevTarget.current) return;
-    const start = prevTarget.current;
-    const diff = target - start;
-    if (diff === 0) return;
-
-    const startTime = performance.now();
-    let raf;
-    const step = (now) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setValue(start + diff * eased);
-      if (progress < 1) {
-        raf = requestAnimationFrame(step);
-      } else {
-        prevTarget.current = target;
-      }
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-
-  return value;
-}
 
 const CountUpValue = ({ value, precision = 3, prefix = '' }) => {
   const animated = useCountUp(value);
@@ -90,7 +59,16 @@ function compareLogsByLatest(a, b) {
   return String(b?.id ?? '').localeCompare(String(a?.id ?? ''));
 }
 
-const MOBILE_BREAKPOINT = 768;
+const DEFAULT_TAB_DATA = {
+  totalGranted: 0,
+  totalUsed: 0,
+  totalAvailable: 0,
+  unlimitedQuota: false,
+  expiresAt: 0,
+  tokenName: '',
+  logs: [],
+  tokenValid: false,
+};
 
 const LogsTable = () => {
   const [apikey, setAPIKey] = useState('');
@@ -99,9 +77,8 @@ const LogsTable = () => {
   const [loading, setLoading] = useState(false);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [baseUrl, setBaseUrl] = useState('');
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT);
+  const isMobile = useMobileDetect();
 
-  // ✅ 让 baseUrls 引用稳定，并且避免 JSON.parse 崩溃
   const baseUrls = useMemo(() => {
     try {
       const parsed = JSON.parse(getEnv('BASE_URL') || '{}');
@@ -111,7 +88,6 @@ const LogsTable = () => {
     }
   }, []);
 
-  // ✅ 修复 exhaustive-deps：把 baseUrls 放进依赖
   useEffect(() => {
     const keys = Object.keys(baseUrls);
     if (keys.length > 0) {
@@ -121,36 +97,19 @@ const LogsTable = () => {
     }
   }, [baseUrls]);
 
-  useEffect(() => {
-    const onResize = () => {
-      setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
   const handleTabChange = (key) => {
     setActiveTabKey(key);
     setBaseUrl(baseUrls[key]);
   };
 
-  const resetData = (key) => {
+  const resetData = useCallback((key) => {
     setTabData((prev) => ({
       ...prev,
-      [key]: {
-        totalGranted: 0,
-        totalUsed: 0,
-        totalAvailable: 0,
-        unlimitedQuota: false,
-        expiresAt: 0,
-        tokenName: '',
-        logs: [],
-        tokenValid: false,
-      },
+      [key]: { ...DEFAULT_TAB_DATA },
     }));
-  };
+  }, []);
 
-  const copyText = async (text) => {
+  const copyText = useCallback(async (text) => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
@@ -178,7 +137,7 @@ const LogsTable = () => {
     } catch (err) {
       Modal.error({ title: '无法复制到剪贴板，请手动复制', content: text });
     }
-  };
+  }, []);
 
   const fetchData = async () => {
     if (!baseUrl) {
@@ -198,18 +157,7 @@ const LogsTable = () => {
 
     setLoading(true);
 
-    const prev = tabData[activeTabKey] || {};
-    const newTabData = {
-      ...prev,
-      totalGranted: 0,
-      totalUsed: 0,
-      totalAvailable: 0,
-      unlimitedQuota: false,
-      expiresAt: 0,
-      tokenName: '',
-      logs: [],
-      tokenValid: false,
-    };
+    const newTabData = { ...DEFAULT_TAB_DATA };
 
     // 余额信息
     try {
@@ -246,7 +194,6 @@ const LogsTable = () => {
           headers: { Authorization: `Bearer ${apikey}` },
         });
 
-        // ✅ 去掉未使用的 message（eslint no-unused-vars）
         const { success, data: logData } = logRes.data || {};
         if (success) {
           const logs = Array.isArray(logData) ? logData.slice().sort(compareLogsByLatest) : [];
@@ -269,14 +216,7 @@ const LogsTable = () => {
   const copyTokenInfo = (e) => {
     e.stopPropagation();
     const active = tabData[activeTabKey] || {};
-    const {
-      totalGranted,
-      totalUsed,
-      totalAvailable,
-      unlimitedQuota,
-      expiresAt,
-      tokenName,
-    } = active;
+    const { totalGranted, totalUsed, totalAvailable, unlimitedQuota, expiresAt, tokenName } = active;
 
     const info = `令牌名称: ${tokenName || '未知'}
 令牌总额: ${unlimitedQuota ? '无限' : renderQuota(totalGranted, 3)}
@@ -287,7 +227,7 @@ const LogsTable = () => {
     copyText(info);
   };
 
-  const exportCSV = (e) => {
+  const exportCSV = async (e) => {
     e.stopPropagation();
     const active = tabData[activeTabKey] || { logs: [] };
     const { logs } = active;
@@ -302,9 +242,10 @@ const LogsTable = () => {
       详情: log.content,
     }));
 
-    const csvString = '\ufeff' + Papa.unparse(csvData);
-
     try {
+      const Papa = (await import('papaparse')).default;
+      const csvString = '\ufeff' + Papa.unparse(csvData);
+
       const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
 
@@ -332,7 +273,7 @@ const LogsTable = () => {
     }
   };
 
-  const columns = [
+  const columns = useMemo(() => [
     {
       title: '时间',
       dataIndex: 'created_at',
@@ -412,8 +353,8 @@ const LogsTable = () => {
         record.model_name && record.model_name.startsWith('mj_')
           ? null
           : record.type === 0 || record.type === 2
-          ? text
-          : null,
+            ? text
+            : null,
       sorter: (a, b) => a.prompt_tokens - b.prompt_tokens,
     },
     {
@@ -448,14 +389,14 @@ const LogsTable = () => {
         );
       },
     },
-  ];
+  ], [isMobile, copyText]);
 
-  const expandRowRender = (record) => {
+  const expandRowRender = useCallback((record) => {
     let other = null;
     try {
       const raw = record.other === '' ? '{}' : record.other;
       other = JSON.parse(raw);
-    } catch {}
+    } catch { }
 
     const kvRows = [
       ['模型', record.model_name || '-'],
@@ -501,18 +442,9 @@ const LogsTable = () => {
         </div>
       </div>
     );
-  };
+  }, []);
 
-  const activeTabData = tabData[activeTabKey] || {
-    logs: [],
-    totalGranted: 0,
-    totalUsed: 0,
-    totalAvailable: 0,
-    unlimitedQuota: false,
-    expiresAt: 0,
-    tokenName: '',
-    tokenValid: false,
-  };
+  const activeTabData = tabData[activeTabKey] || DEFAULT_TAB_DATA;
 
   const renderStatsCard = (title, value, icon, accentColor, unit = '', isCounter = false) => (
     <Card shadows="hover" className="stats-card" style={{ '--card-accent': accentColor }} bodyStyle={{ padding: '16px 20px' }}>

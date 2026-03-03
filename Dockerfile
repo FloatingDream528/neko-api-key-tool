@@ -1,18 +1,19 @@
-FROM node:16 AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
 COPY . .
-RUN npm install
 RUN npm run build
 
 
-FROM nginx:1.19.0-alpine
-# 将构建的React应用复制到Nginx的html目录
+FROM nginx:1.27-alpine
+# Custom nginx config with gzip & caching
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy built React app to Nginx html directory
 COPY --from=builder /app/build /usr/share/nginx/html
-# 复制启动脚本（运行时注入环境变量）
+# Copy entrypoint script for runtime env injection
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
-# 暴露端口80
 EXPOSE 80
-# 使用入口脚本启动（先生成 env-config.js，再启动 nginx）
 ENTRYPOINT ["/docker-entrypoint.sh"]

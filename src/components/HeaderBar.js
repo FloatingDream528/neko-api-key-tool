@@ -1,5 +1,4 @@
 import { Nav } from '@douyinfe/semi-ui';
-import { IconTag } from '@douyinfe/semi-icons-lab';
 import { IconConnectionPoint1, IconGithubLogo, IconMoon, IconSun } from '@douyinfe/semi-icons';
 import { useSetTheme, useTheme } from '../context/Theme';
 import { getEnv } from '../helpers/env';

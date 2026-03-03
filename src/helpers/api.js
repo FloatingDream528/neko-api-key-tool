@@ -1,6 +1,5 @@
-import { showError } from './utils';
-import { getEnv } from './env';
 import axios from 'axios';
+import { getEnv } from './env';
 
 export const API = axios.create({
   baseURL: getEnv('API_SERVER') || '',
@@ -9,6 +8,6 @@ export const API = axios.create({
 API.interceptors.response.use(
   (response) => response,
   (error) => {
-    showError(error);
+    return Promise.reject(error);
   }
 );
